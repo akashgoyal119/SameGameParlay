@@ -59,11 +59,12 @@ class Sgp:
             for i in range(len(combination)):
                 pricing_info.append([event_id, bet_uuid, sid_list[i], price, response.status_code])
             return pd.DataFrame(pricing_info, columns=['event_id', 'bet_uuid', 'sid', 'sgp_price', 'response_status_code'])
-        except KeyError:
+        except KeyError as e:
+            #print(f'fail due to {e}.')
             return pd.DataFrame()
         except Exception as e:
             sid_name = ','.join(sid_list)
-            print(f'Error for {sid_name}, {event_id} due to {e}.')
+            #print(f'Error for {sid_name}, {event_id} due to {e}.')
             return pd.DataFrame()
 
     def filter_out_book_specific_combination_types(self, df):
@@ -88,7 +89,7 @@ class Sgp:
             second_pass_combos.append(combo)
         return second_pass_combos
 
-    def create_combinations(self, possible_bets_df, event_id):
+    def create_combinations(self, possible_bets_df, event_id, angle_type='nba'):
         book_df = possible_bets_df[
             (possible_bets_df['bookie'] == self.bookie) &
             (possible_bets_df['expected_value'].between(self.minimum_straight_ev, self.maximum_straight_ev)) &
@@ -100,11 +101,60 @@ class Sgp:
             combos = [tuple(np.random.choice(indices, r, replace=False)) for _ in range(k)]
             return combos
 
+        if angle_type == 'nfl':
+            return self.create_combinations_touchdown_angle(book_df)
+        elif angle_type == 'nba':
+            return self.create_combinations_nba(book_df)
+
         game_df = self.filter_out_book_specific_combination_types(book_df)
         game_df = game_df.sample(frac=1).reset_index(drop=True)
         combos = fast_random_combinations(game_df.index, self.sgp_num_legs, self.max_combinations_per_game)
         second_pass_combos = self.postprocess_book_specific_combos(game_df, combos)
         return game_df, second_pass_combos
+
+    def create_combinations_nba(self, book_df):
+        book_df = book_df.sort_values(by=['price'])
+        home_runs = book_df.iloc[1:]
+        home_runs.index = list(range(home_runs.shape[0]))
+        non_hr = book_df.iloc[:1]
+        non_hr_shape = non_hr.shape[0]
+        start_index = home_runs.shape[0]
+        non_hr.index = list(range(start_index, start_index + non_hr_shape))
+
+        game_df = pd.concat([home_runs, non_hr])
+        combos = []
+        for i in range(home_runs.shape[0]):
+            home_runs_index = home_runs.iloc[i].name
+            non_sampled_qty = min(10, non_hr.shape[0])
+            sampled_non_hr = non_hr.sample(n=non_sampled_qty)
+            for j in range(sampled_non_hr.shape[0]):
+                non_hr_index = sampled_non_hr.iloc[j].name
+                combos.append((home_runs_index, non_hr_index))
+        return game_df, combos
+
+
+    def create_combinations_touchdown_angle(self, book_df):
+        home_runs = book_df[
+            (book_df['stat'].str.contains('player_anytime_td'))
+        ]
+        home_runs.index = list(range(home_runs.shape[0]))
+        non_hr = book_df[
+            ~(book_df['stat'].str.contains('player_anytime_td'))
+        ]
+        non_hr_shape = non_hr.shape[0]
+        start_index = home_runs.shape[0]
+        non_hr.index = list(range(start_index, start_index + non_hr_shape))
+
+        game_df = pd.concat([home_runs, non_hr])
+        combos = []
+        for i in range(home_runs.shape[0]):
+            home_runs_index = home_runs.iloc[i].name
+            non_sampled_qty = min(10, non_hr.shape[0])
+            sampled_non_hr = non_hr.sample(n=non_sampled_qty)
+            for j in range(sampled_non_hr.shape[0]):
+                non_hr_index = sampled_non_hr.iloc[j].name
+                combos.append((home_runs_index, non_hr_index))
+        return game_df, combos
 
     def get_all_prices(self, possible_bets_df, game_pk):
         game_df, combos = self.create_combinations(possible_bets_df, game_pk)
@@ -152,13 +202,13 @@ class Sgp:
 
 
     def main(self):
-        straight_odds_and_probabilities_df = pd.read_parquet('data/straights_with_probabilities/2025-10-09.parquet')
+        straight_odds_and_probabilities_df = pd.read_parquet('data/straights_with_probabilities/2025-10-26.parquet')
         straight_odds_and_probabilities_df['selectionId'] = straight_odds_and_probabilities_df['link'].str.split('options=').str[-1].str.split('&').str[0]
+        straight_odds_and_probabilities_df = straight_odds_and_probabilities_df[
+            straight_odds_and_probabilities_df['home_team'].isin(['Sacramento Kings', 'Los Angeles Clippers'])
+        ]
         sgp_prices = []
-        for event_id in straight_odds_and_probabilities_df['id'].unique():
-            if event_id != 'e10fe83ee6178a598e7fa84ea0913366':
-                continue
-
+        for i, event_id in enumerate(straight_odds_and_probabilities_df['id'].unique()):
             _sgp_prices = self.get_all_prices(straight_odds_and_probabilities_df, event_id)
             if _sgp_prices.shape[0] > 0:
                 sgp_prices.append(_sgp_prices)
@@ -221,15 +271,16 @@ class MgmSgp(Sgp):
         headers = {
             "content-type": "application/json",
             "user-agent": "Mozilla/5.0",
-            "origin": "https://www.az.betmgm.com"
+            "origin": "https://www.il.betmgm.com"
         }
-        url = "https://www.az.betmgm.com/cds-api/bettingoffer/picks"
+        url = "https://www.il.betmgm.com/cds-api/bettingoffer/picks"
         params = {
-            "x-bwin-accessid": "N2Q4OGJjODYtODczMi00NjhhLWJlMWItOGY5MDUzMjYwNWM5",
+            #"x-bwin-accessid": "N2Q4OGJjODYtODczMi00NjhhLWJlMWItOGY5MDUzMjYwNWM5",
+            "x-bwin-accessid": "ZTg4YWEwMTgtZTlhYy00MWRkLWIzYWYtZjMzODI5ZDE0Mjc5",
             "lang": "en-us",
             "country": "US",
             "userCountry": "US",
-            "subdivision": "US-California",
+            "subdivision": "US-Illinois",
         }
         initial_request = requests.post(url, params=params, json=payload, headers=headers)
         pick_group_id = initial_request.json()['fixturePage']['fixtures'][0]['addons']['betBuilderId']
@@ -242,7 +293,7 @@ class MgmSgp(Sgp):
 
 if __name__ == '__main__':
     sgp = {
-        'betmgm': MgmSgp('betmgm', max_combinations_per_game=10000, num_threads=20, sgp_num_legs=2)
+        'betmgm': MgmSgp('betmgm', max_combinations_per_game=8000, num_threads=10, sgp_num_legs=2)
     }
     sgp_books_to_scrape = ['betmgm']
     for book in sgp_books_to_scrape:

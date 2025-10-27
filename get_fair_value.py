@@ -3,6 +3,7 @@ import pandas as pd
 from ag_draftking_utils.util import get_current_chicago_time
 from ag_draftking_utils.odds_conversions import *
 import warnings
+import numpy as np
 warnings.filterwarnings('ignore')
 
 today = str(get_current_chicago_time().date())
@@ -10,7 +11,7 @@ today = str(get_current_chicago_time().date())
 
 def main():
     bets = []
-    folder = f'data/straights/{today}'
+    folder = f'data/nba/{today}'
     for file in os.listdir(folder):
         df = pd.read_parquet(os.path.join(folder, file))
         bets.append(df.copy())

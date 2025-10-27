@@ -9,53 +9,91 @@ from ag_draftking_utils.util import get_current_chicago_time
 API_KEY = os.environ['odds_api_api_key']
 BASE_URL = 'https://api.the-odds-api.com'
 
-def get_markets_string():
+def get_nfl_markets_string():
     player_props = [
-            'player_field_goals',
-            'player_kicking_points',
-            'player_pass_attempts',
-            'player_pass_interceptions',
-            'player_pass_longest_completion',
-            'player_pass_tds',
-            'player_pass_completions',
-            'player_pass_yds_alternate',
-            'player_pass_yds',
-            'player_reception_yds',
-            'player_reception_longest',
-            'player_receptions',
-            'player_reception_yds_alternate',
-            'player_rush_yds',
-            'player_rush_yds_alternate',
-            'player_rush_reception_yds',
-            'player_rush_reception_yds_alternate',
-            'player_anytime_td',
-            'player_1st_td',
-            'player_rush_reception_tds_alternate'
-        ]
+            #'player_anytime_td',
+            #'player_1st_td',
+            #'player_rush_reception_tds_alternate'
+    ]
+    """
+    'player_field_goals',
+    'player_kicking_points',
+    'player_pass_attempts',
+    'player_pass_interceptions',
+    'player_pass_longest_completion',
+    'player_pass_tds',
+    'player_pass_completions',
+    'player_pass_yds_alternate',
+    'player_pass_yds',
+    'player_reception_yds',
+    'player_reception_longest',
+    'player_receptions',
+    'player_reception_yds_alternate',
+    'player_rush_yds',
+    'player_rush_yds_alternate',
+    'player_rush_reception_yds',
+    'player_rush_reception_yds_alternate',
+    """
     game_markets = [
             'h2h',
             'spreads',
             'totals',
-            'alternate_spreads',
-            'alternate_totals',
-            'team_totals',
-            'alternate_team_totals',
-            'h2h_q1',
-            'h2h_h1',
-            'spreads_q1',
-            'spreads_h1',
-            'alternate_spreads_q1',
-            'alternate_spreads_h1',
-            'totals_q1',
-            'totals_h1',
-            'alternate_totals_q1',
-            'alternate_totals_h1',
-            'team_totals_h1',
-            'team_totals_q1',
-            'alternate_team_totals_q1',
-            'alternate_team_totals_h1'
         ]
-    return ','.join(player_props+game_markets)
+    """
+    'alternate_spreads',
+    'alternate_totals',
+    'team_totals',
+    'alternate_team_totals',
+    'h2h_q1',
+    'h2h_h1',
+    'spreads_q1',
+    'spreads_h1',
+    'alternate_spreads_q1',
+    'alternate_spreads_h1',
+    'totals_q1',
+    'totals_h1',
+    'alternate_totals_q1',
+    'alternate_totals_h1',
+    'team_totals_h1',
+    'team_totals_q1',
+    'alternate_team_totals_q1',
+    'alternate_team_totals_h1'
+    """
+    return ','.join(game_markets)
+
+
+def get_nba_markets_string():
+    player_props_string = (
+        f'player_rebounds,player_points,player_assists,player_threes,player_blocks,' +
+        f'player_points_alternate,player_rebounds_alternate,player_assists_alternate,player_blocks_alternate,' +
+        f'player_threes_alternate,player_points_rebounds,player_points_assists,' +
+        f'player_points_rebounds_assists,player_rebounds_assists,player_double_double,player_triple_double'
+    )
+    game_markets = [
+        'h2h',
+        'spreads',
+        'totals',
+        'alternate_spreads',
+        'alternate_totals',
+        'team_totals',
+        'alternate_team_totals',
+        'h2h_q1',
+        'h2h_h1',
+        'spreads_q1',
+        'spreads_h1',
+        'alternate_spreads_q1',
+        'alternate_spreads_h1',
+        'totals_q1',
+        'totals_h1',
+        'alternate_totals_q1',
+        'alternate_totals_h1',
+        'team_totals_h1',
+        'team_totals_q1',
+        'alternate_team_totals_q1',
+        'alternate_team_totals_h1'
+    ]
+    game_markets_string = ','.join(game_markets)
+    return player_props_string + ',' + game_markets_string
 
 
 def response_to_df_live(js_obj, event_id):
@@ -110,27 +148,41 @@ def response_to_df_live(js_obj, event_id):
 
 
 def main():
-    url = f'{BASE_URL}/v4/sports/americanfootball_nfl/events?apiKey={API_KEY}'
-    response = requests.get(url)
-    events = pd.DataFrame(response.json())
-    events['commence_time'] = pd.to_datetime(events['commence_time']).dt.tz_localize(None)
-    current_events = events[
-        events['commence_time'] <= (datetime.datetime.utcnow() + datetime.timedelta(days=4))
+
+    # use in the future for certain promos...
+    other_markets_deprecated = [
+         'boxing_boxing', 'mma_mixed_martial_arts',
+         'soccer_england_league1',
+         'soccer_england_league2', 'soccer_epl', 'soccer_france_ligue_one',
+         'soccer_france_ligue_two', 'soccer_germany_bundesliga', 'soccer_germany_bundesliga2',
+         'soccer_germany_liga3', 'soccer_italy_serie_a', 'soccer_italy_serie_b',
+         'soccer_usa_mls'
     ]
 
-    NOW = get_current_chicago_time()
-    current_day = str(NOW.date())
+    sports = ['basketball_nba']
+    for sport in sports:
+        url = f'{BASE_URL}/v4/sports/{sport}/events?apiKey={API_KEY}'
+        response = requests.get(url)
+        events = pd.DataFrame(response.json())
+        events['commence_time'] = pd.to_datetime(events['commence_time']).dt.tz_localize(None)
+        current_events = events[
+            events['commence_time'] <= (datetime.datetime.utcnow() + datetime.timedelta(days=7))
+        ]
 
-    if not os.path.exists(f'data/straights/{current_day}'):
-        os.mkdir(f'data/straights/{current_day}')
+        NOW = get_current_chicago_time()
+        current_day = str(NOW.date())
 
-    for event_id in tqdm.tqdm(current_events['id']):
-        live_events_url = (f'{BASE_URL}/v4/sports/americanfootball_nfl/events/{event_id}/odds?apiKey={API_KEY}&regions=us&markets=' +
-                            get_markets_string() + '&oddsFormat=american&includeLinks=true&includeBetLimits=true&includeSids=true')
-        response_props = requests.get(live_events_url)
-        odds_data = response_to_df_live(response_props.json(), event_id)
-        odds_data = odds_data.merge(current_events, how='inner', on='id')
-        odds_data.to_parquet(f'data/straights/{current_day}/{event_id}.parquet', index=False)
+        if not os.path.exists(f'data/nba/{current_day}'):
+            os.makedirs(f'data/nba/{current_day}')
+
+        for event_id in tqdm.tqdm(current_events['id']):
+            live_events_url = (f'{BASE_URL}/v4/sports/{sport}/events/{event_id}/odds?apiKey={API_KEY}&regions=us,us2,us_ex&markets=' +
+                                get_nba_markets_string() + '&oddsFormat=american&includeLinks=true&includeBetLimits=true&includeSids=true')
+            response_props = requests.get(live_events_url)
+            odds_data = response_to_df_live(response_props.json(), event_id)
+            if odds_data.shape[0] > 0:
+                odds_data = odds_data.merge(current_events, how='inner', on='id')
+                odds_data.to_parquet(f'data/nba/{current_day}/{event_id}.parquet', index=False)
 
 
 if __name__ == '__main__':
