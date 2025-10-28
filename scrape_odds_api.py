@@ -159,31 +159,34 @@ def main():
          'soccer_usa_mls'
     ]
 
-    sports = ['basketball_nba']
-    for sport in sports:
-        url = f'{BASE_URL}/v4/sports/{sport}/events?apiKey={API_KEY}'
-        response = requests.get(url)
-        events = pd.DataFrame(response.json())
-        events['commence_time'] = pd.to_datetime(events['commence_time']).dt.tz_localize(None)
-        current_events = events[
-            events['commence_time'] <= (datetime.datetime.utcnow() + datetime.timedelta(days=7))
-        ]
+    sport = 'basketball_nba'
+    url = f'{BASE_URL}/v4/sports/{sport}/events?apiKey={API_KEY}'
+    response = requests.get(url)
+    events = pd.DataFrame(response.json())
+    events['commence_time'] = pd.to_datetime(events['commence_time']).dt.tz_localize(None)
+    current_events = events[
+        events['commence_time'] <= (datetime.datetime.utcnow() + datetime.timedelta(days=7))
+    ]
 
-        NOW = get_current_chicago_time()
-        current_day = str(NOW.date())
+    NOW = get_current_chicago_time()
+    current_day = str(NOW.date())
 
-        if not os.path.exists(f'data/nba/{current_day}'):
-            os.makedirs(f'data/nba/{current_day}')
+    all_odds_data = []
+    if not os.path.exists(f'data/nba/{current_day}'):
+        os.makedirs(f'data/nba/{current_day}')
 
-        for event_id in tqdm.tqdm(current_events['id']):
-            live_events_url = (f'{BASE_URL}/v4/sports/{sport}/events/{event_id}/odds?apiKey={API_KEY}&regions=us,us2,us_ex&markets=' +
-                                get_nba_markets_string() + '&oddsFormat=american&includeLinks=true&includeBetLimits=true&includeSids=true')
-            response_props = requests.get(live_events_url)
-            odds_data = response_to_df_live(response_props.json(), event_id)
-            if odds_data.shape[0] > 0:
-                odds_data = odds_data.merge(current_events, how='inner', on='id')
-                odds_data.to_parquet(f'data/nba/{current_day}/{event_id}.parquet', index=False)
-
+    for event_id in tqdm.tqdm(current_events['id']):
+        live_events_url = (f'{BASE_URL}/v4/sports/{sport}/events/{event_id}/odds?apiKey={API_KEY}&regions=us,us2,us_ex&markets=' +
+                            get_nba_markets_string() + '&oddsFormat=american&includeLinks=true&includeBetLimits=true&includeSids=true')
+        response_props = requests.get(live_events_url)
+        odds_data = response_to_df_live(response_props.json(), event_id)
+        if odds_data.shape[0] > 0:
+            odds_data = odds_data.merge(current_events, how='inner', on='id')
+            odds_data.to_parquet(f'data/nba/{current_day}/{event_id}.parquet', index=False)
+            all_odds_data.append(odds_data)
+    if len(all_odds_data) > 0:
+        return pd.concat(all_odds_data)
+    return pd.DataFrame()
 
 if __name__ == '__main__':
     main()

@@ -10,6 +10,8 @@ import json
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 import warnings
+
+
 warnings.filterwarnings('ignore')
 
 NOW = get_current_chicago_time()
@@ -54,11 +56,12 @@ class Sgp:
                 # filename too long...
                 pass
             price = self.get_price_from_response(response)
+            suspension_state = self.get_suspension_state(response)
 
             pricing_info = []
             for i in range(len(combination)):
-                pricing_info.append([event_id, bet_uuid, sid_list[i], price, response.status_code])
-            return pd.DataFrame(pricing_info, columns=['event_id', 'bet_uuid', 'sid', 'sgp_price', 'response_status_code'])
+                pricing_info.append([event_id, bet_uuid, sid_list[i], price, suspension_state, response.status_code])
+            return pd.DataFrame(pricing_info, columns=['event_id', 'bet_uuid', 'sid', 'sgp_price', 'suspension_state', 'response_status_code'])
         except KeyError as e:
             #print(f'fail due to {e}.')
             return pd.DataFrame()
@@ -169,7 +172,8 @@ class Sgp:
                 sgp_prices.append(future.result())
         if len(sgp_prices) > 0:
             sgp_prices = pd.concat(sgp_prices)
-            sgp_prices['bet_uuid'] = sgp_prices['bet_uuid'].astype(str)
+            if sgp_prices.shape[0] > 0:
+                sgp_prices['bet_uuid'] = sgp_prices['bet_uuid'].astype(str)
         else:
             sgp_prices = pd.DataFrame()
         return sgp_prices
@@ -201,12 +205,8 @@ class Sgp:
         return raw_sgp_price_df
 
 
-    def main(self):
-        straight_odds_and_probabilities_df = pd.read_parquet('data/straights_with_probabilities/2025-10-26.parquet')
+    def main(self, straight_odds_and_probabilities_df):
         straight_odds_and_probabilities_df['selectionId'] = straight_odds_and_probabilities_df['link'].str.split('options=').str[-1].str.split('&').str[0]
-        straight_odds_and_probabilities_df = straight_odds_and_probabilities_df[
-            straight_odds_and_probabilities_df['home_team'].isin(['Sacramento Kings', 'Los Angeles Clippers'])
-        ]
         sgp_prices = []
         for i, event_id in enumerate(straight_odds_and_probabilities_df['id'].unique()):
             _sgp_prices = self.get_all_prices(straight_odds_and_probabilities_df, event_id)
@@ -246,6 +246,14 @@ class MgmSgp(Sgp):
             return None
         bet_id = keys[0]
         return str(int(js['betBuilderPricingGroups'][bet_id]['odds']['americanOdds']))
+
+    def get_suspension_state(self, response):
+        js = response.json()
+        keys = list(js['betBuilderPricingGroups'].keys())
+        if len(keys) != 1:
+            return None
+        bet_id = keys[0]
+        return js['betBuilderPricingGroups'][bet_id].get('suspensionState', None)
 
     def get_bet_sid(self, game_df, bet_index):
         """Need to override this from base-class because the sid lacks the fixture/game/result id pieces of
@@ -293,12 +301,13 @@ class MgmSgp(Sgp):
 
 if __name__ == '__main__':
     sgp = {
-        'betmgm': MgmSgp('betmgm', max_combinations_per_game=8000, num_threads=10, sgp_num_legs=2)
+        'betmgm': MgmSgp('betmgm', max_combinations_per_game=8000, num_threads=15, sgp_num_legs=2)
     }
+    straight_odds_and_probabilities_df = pd.read_parquet('data/straights_with_probabilities/2025-10-27.parquet')
     sgp_books_to_scrape = ['betmgm']
     for book in sgp_books_to_scrape:
         obj = sgp[book]
-        prices = obj.main()
+        prices = obj.main(straight_odds_and_probabilities_df)
         save_pandas_df(
             prices,
             os.path.join(

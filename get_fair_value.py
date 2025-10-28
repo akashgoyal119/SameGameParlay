@@ -9,13 +9,15 @@ warnings.filterwarnings('ignore')
 today = str(get_current_chicago_time().date())
 
 
-def main():
-    bets = []
-    folder = f'data/nba/{today}'
-    for file in os.listdir(folder):
-        df = pd.read_parquet(os.path.join(folder, file))
-        bets.append(df.copy())
-    bets = pd.concat(bets)
+def main(bets, load_saved_files=True):
+    if load_saved_files:
+        bets = []
+        folder = f'data/nba/{today}'
+        for file in os.listdir(folder):
+            df = pd.read_parquet(os.path.join(folder, file))
+            bets.append(df.copy())
+        bets = pd.concat(bets)
+
     bets['implied_probability'] = american_odds_to_breakeven_probability_vectorized(
         bets, price_col='price')
     bets = get_opposite_price(bets)
@@ -54,6 +56,7 @@ def main():
     )
     combined_bets = combined_bets.drop(columns=['xHold', 'payout_given_win', 'implied_probability_opposite'])
     combined_bets.to_parquet(f'data/straights_with_probabilities/{today}.parquet', index=False)
+    return combined_bets
 
 
 def get_opposite_price(bets):
@@ -102,7 +105,3 @@ def get_opposite_price(bets):
         on=['id', 'bookie', 'stat', 'player_name', 'line', 'market_type']
     )
     return bets
-
-
-if __name__ == '__main__':
-    main()
